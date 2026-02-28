@@ -1,0 +1,244 @@
+// ===================== SCENE MANAGER =====================
+let level = null;
+let collisionGrid = null;
+let levelEntities = null;
+let MAP_W = 0, MAP_H = 0;
+let placedTiles = [];
+
+function setLevel(levelObj) {
+  level = levelObj;
+  collisionGrid = collisionFromAscii(level.collisionAscii);
+  levelEntities = level.entities || [];
+  MAP_W = level.widthTiles * TILE;
+  MAP_H = level.heightTiles * TILE;
+  placedTiles.length = 0;
+  Scene._update();
+}
+
+const Scene = {
+  _current: 'lobby',
+  _update() {
+    const prev = this._current;
+    if (!level) { this._current = 'lobby'; return; }
+    if (level.isLobby) this._current = 'lobby';
+    else if (level.isCave) this._current = 'cave';
+    else if (level.isMine) this._current = 'mine';
+    else if (level.isCooking) this._current = 'cooking';
+    else if (level.isFarm) this._current = 'farm';
+    else if (level.isAzurine) this._current = 'azurine';
+    else if (level.isTestArena) this._current = 'test_arena';
+    else this._current = 'dungeon';
+    if (prev !== this._current) {
+      try { Events.emit('scene_changed', { from: prev, to: this._current }); } catch(e) {}
+    }
+  },
+  is(scene) { return this._current === scene; },
+  get current() { return this._current; },
+  get inDungeon() { return this._current === 'dungeon'; },
+  get inLobby() { return this._current === 'lobby'; },
+  get inCave() { return this._current === 'cave'; },
+  get inMine() { return this._current === 'mine'; },
+  get inCooking() { return this._current === 'cooking'; },
+  get inFarm() { return this._current === 'farm'; },
+  get inAzurine() { return this._current === 'azurine'; },
+  get inTestArena() { return this._current === 'test_arena'; },
+};
+
+let transitioning = false;
+let transitionAlpha = 0;
+let transitionPhase = 0;
+let transitionTarget = null;
+let transitionSpawnTX = 0;
+let transitionSpawnTY = 0;
+
+function enterLevel(targetLevelId, spawnTX, spawnTY) {
+  try {
+    const targetLevel = LEVELS[targetLevelId];
+    if (!targetLevel) return;
+    setLevel(targetLevel);
+    player.x = spawnTX * TILE + TILE / 2;
+    player.y = spawnTY * TILE + TILE / 2;
+    player.vx = 0; player.vy = 0;
+    UI.close();
+    mobs.length = 0;
+    bullets.length = 0;
+    hitEffects.length = 0;
+    medpacks.length = 0;
+    queueActive = false; queuePlayers = 0; queueTimer = 0;
+    if (targetLevel.isLobby || targetLevel.isCave || targetLevel.isAzurine) {
+      resetCombatState('lobby');
+    } else if (targetLevel.isMine) {
+      resetCombatState('mine');
+    } else if (targetLevel.isCooking) {
+      resetCombatState('cooking');
+      if (typeof initDeliNPCs === 'function') initDeliNPCs();
+    } else if (targetLevel.isFarm) {
+      resetCombatState('farm');
+      if (typeof initFarmState === 'function') initFarmState();
+    } else {
+      pendingDungeonFloor = queueFloorStart;
+      pendingDungeonType = queueDungeonType;
+      pendingReturnLevel = queueReturnLevel;
+      resetCombatState('dungeon');
+    }
+    transitioning = true;
+    transitionPhase = 2;
+    transitionAlpha = 1;
+  } catch(err) {
+    console.error("enterLevel error:", err);
+    transitioning = false;
+  }
+}
+
+function startTransition(targetLevelId, spawnTX, spawnTY) {
+  if (transitioning) return;
+  transitionTarget = targetLevelId;
+  transitionSpawnTX = spawnTX;
+  transitionSpawnTY = spawnTY;
+  transitioning = true;
+  transitionPhase = 1;
+  transitionAlpha = 0;
+}
+
+function updateTransition() {
+  if (!transitioning) return;
+  if (transitionPhase === 1) {
+    transitionAlpha += 0.12;
+    if (transitionAlpha >= 1) {
+      transitionAlpha = 1;
+      transitionPhase = 0;
+      transitioning = false;
+      enterLevel(transitionTarget, transitionSpawnTX, transitionSpawnTY);
+    }
+  } else if (transitionPhase === 2) {
+    transitionAlpha -= 0.08;
+    if (transitionAlpha <= 0) {
+      transitionAlpha = 0;
+      transitioning = false;
+      transitionPhase = 0;
+    }
+  }
+}
+
+let queueActive = false;
+let queueTimer = 0;
+const QUEUE_DURATION = 600;
+let queuePlayers = 0;
+const QUEUE_MAX = 4;
+let queueDungeonId = '';
+let queueSpawnTX = 0;
+let queueSpawnTY = 0;
+let nearQueue = false;
+let nearStairs = false;
+let nearFishingSpot = false;
+let queueLockX = 0;
+let queueLockY = 0;
+let queueFloorStart = 1;
+let queueDungeonType = 'cave';
+let queueReturnLevel = 'cave_01';
+let pendingDungeonFloor = null;
+let pendingDungeonType = null;
+let pendingReturnLevel = null;
+let queueCirclePositions = [];
+
+function checkPortals() {
+  if (transitioning) return;
+  nearQueue = false;
+  nearFishingSpot = false;
+  for (const e of levelEntities) {
+    const ew = e.w || 1, eh = e.h || 1;
+    const px = player.x / TILE, py = player.y / TILE;
+    const inZone = px >= e.tx && px < e.tx + ew && py >= e.ty && py < e.ty + eh;
+    if (e.type === 'cave_entrance' && Scene.inLobby && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'mine_entrance' && Scene.inLobby && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'mine_exit' && Scene.inMine && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'cave_exit' && Scene.inCave && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'deli_entrance' && Scene.inLobby && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'deli_exit' && Scene.inCooking && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'house_entrance' && Scene.inLobby && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'house_exit' && Scene.inFarm && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'azurine_entrance' && Scene.inLobby && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'azurine_exit' && Scene.inAzurine && inZone) { startTransition(e.target, e.spawnTX, e.spawnTY); return; }
+    if (e.type === 'queue_zone' && (Scene.inCave || Scene.inAzurine) && inZone) {
+      nearQueue = true;
+      queueDungeonId = e.dungeonId;
+      queueSpawnTX = e.spawnTX;
+      queueSpawnTY = e.spawnTY;
+      queueFloorStart = e.floorStart || 0;
+      queueDungeonType = e.dungeonType || 'cave';
+    }
+    if (e.type === 'fishing_spot' && Scene.inLobby && inZone) { nearFishingSpot = true; }
+  }
+  nearStairs = false;
+  if (stairsOpen && Scene.inDungeon) {
+    const stairCX = level.widthTiles / 2;
+    const stairCY = level.heightTiles / 2;
+    const px = player.x / TILE, py = player.y / TILE;
+    if (px >= stairCX - 2 && px < stairCX + 2 && py >= stairCY - 2 && py < stairCY + 2) {
+      nearStairs = true;
+    }
+  }
+}
+
+function goToNextFloor() {
+  if (transitioning) return;
+  if (!Scene.inDungeon) return;
+  if (dungeonFloor >= getDungeonMaxFloors()) return;
+  dungeonFloor++;
+  resetCombatState('floor');
+  player.x = 20 * TILE + TILE / 2;
+  player.y = 20 * TILE + TILE / 2;
+  player.vx = 0; player.vy = 0;
+  transitioning = true;
+  transitionPhase = 2;
+  transitionAlpha = 1;
+  Events.emit('floor_changed', { floor: dungeonFloor });
+}
+
+function joinQueue() {
+  if (!nearQueue || transitioning) return;
+  if (queueActive) { queueActive = false; queuePlayers = Math.max(0, queuePlayers - 1); return; }
+  if (queuePlayers >= QUEUE_MAX) return;
+  queueActive = true;
+  queuePlayers = 1;
+  queueTimer = QUEUE_DURATION;
+  if (queueCirclePositions.length > 0) {
+    queueLockX = queueCirclePositions[0].x;
+    queueLockY = queueCirclePositions[0].y;
+  } else {
+    queueLockX = player.x;
+    queueLockY = player.y;
+  }
+}
+
+function updateQueue() {
+  if (!queueActive) return;
+  player.x = queueLockX;
+  player.y = queueLockY;
+  player.vx = 0; player.vy = 0;
+  player.moving = false;
+  player.dir = 1;
+  queueTimer--;
+  if (queueTimer <= 0) {
+    queueActive = false;
+    queuePlayers = 0;
+    enterLevel(queueDungeonId, queueSpawnTX, queueSpawnTY);
+  }
+}
+
+function isSolid(col, row) {
+  if (!level || !collisionGrid) return true;
+  if (!(col >= 0) || !(row >= 0) || col >= level.widthTiles || row >= level.heightTiles) return true;
+  const gridRow = collisionGrid[row];
+  if (!gridRow) return true;
+  if (gridRow[col] === 1) return true;
+  for (const e of levelEntities) {
+    if (!e.solid) continue;
+    const w = e.w ?? 1;
+    const h = e.h ?? 1;
+    if (col >= e.tx && col < e.tx + w && row >= e.ty && row < e.ty + h) return true;
+  }
+  return false;
+}
+
+setLevel(LEVELS.lobby_01);
