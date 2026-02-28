@@ -5,15 +5,12 @@
 
 const AttackShapes = {
 
-  // ---- Circle AoE ----
-  // Returns true if the player is inside a circle centered at (cx, cy)
   hitsPlayer(cx, cy, radius) {
     const dx = player.x - cx;
     const dy = player.y - cy;
     return dx * dx + dy * dy <= radius * radius;
   },
 
-  // Returns mobs inside a circle (excludes the caster)
   mobsInCircle(cx, cy, radius, excludeId) {
     const r2 = radius * radius;
     const result = [];
@@ -25,13 +22,10 @@ const AttackShapes = {
     return result;
   },
 
-  // ---- Line / Beam ----
-  // Returns true if player is within a line (beam) from (x1,y1) to (x2,y2) with given width
   playerInLine(x1, y1, x2, y2, width) {
     return this._pointInLine(player.x, player.y, x1, y1, x2, y2, width);
   },
 
-  // Returns mobs hit by a line
   mobsInLine(x1, y1, x2, y2, width, excludeId) {
     const result = [];
     for (const m of mobs) {

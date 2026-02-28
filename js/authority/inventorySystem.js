@@ -73,12 +73,14 @@ function equipItem(slot) {
   if (!item) return;
   const eqType = item.type;
   if (!ITEM_CATEGORIES.equipment.includes(eqType)) return;
+
   if (playerEquip[eqType] && playerEquip[eqType].id === item.data.id) {
     if (eqType === 'gun') applyDefaultGun();
     else if (eqType === 'melee') applyDefaultMelee();
     else { playerEquip[eqType] = null; if (eqType === 'chest') recalcMaxHp(); }
     return;
   }
+
   if (eqType === 'gun') { applyGunStats(item.data); gun.ammo = Math.min(gun.ammo, gun.magSize); }
   else if (eqType === 'melee') applyMeleeStats(item.data);
   else { playerEquip[eqType] = item.data; if (eqType === 'chest') recalcMaxHp(); }

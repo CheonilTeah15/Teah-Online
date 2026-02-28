@@ -1,5 +1,6 @@
 // ===================== COMMAND QUEUE =====================
 window.CommandQueue = [];
+
 const _cmdHistory = [];
 const _cmdHistoryMax = 200;
 
@@ -30,7 +31,10 @@ function translateIntentsToCommands() {
   enqueueCommand({ t: 'move', ts: Date.now(), data: { x: I.moveX, y: I.moveY } });
 
   if (!isTyping) {
-    enqueueCommand({ t: 'shoot', ts: Date.now(), data: { held: I.shootHeld, aim: { mouseX: I.mouseX, mouseY: I.mouseY, arrowAimDir: I.arrowAimDir, arrowShooting: I.arrowShooting } } });
+    enqueueCommand({
+      t: 'shoot', ts: Date.now(),
+      data: { held: I.shootHeld, aim: { mouseX: I.mouseX, mouseY: I.mouseY, arrowAimDir: I.arrowAimDir, arrowShooting: I.arrowShooting } },
+    });
   }
 
   if (!isTyping) {
@@ -44,8 +48,10 @@ function translateIntentsToCommands() {
     if (I.slot1Pressed)     enqueueCommand({ t: 'slot', ts: Date.now(), data: { slot: 0 } });
     if (I.slot2Pressed)     enqueueCommand({ t: 'slot', ts: Date.now(), data: { slot: 1 } });
     if (I.slot3Pressed)     enqueueCommand({ t: 'slot', ts: Date.now(), data: { slot: 2 } });
-    if (I.potionPressed && !I.slot1Pressed && !I.slot2Pressed && !I.slot3Pressed) enqueueCommand({ t: 'usePotion', ts: Date.now(), data: {} });
-    if (I.slot5Pressed) enqueueCommand({ t: 'grab',    ts: Date.now(), data: {} });
+    if (I.potionPressed && !I.slot1Pressed && !I.slot2Pressed && !I.slot3Pressed) {
+      enqueueCommand({ t: 'usePotion', ts: Date.now(), data: {} });
+    }
+    if (I.slot5Pressed) enqueueCommand({ t: 'grab',     ts: Date.now(), data: {} });
     if (I.slot4Pressed) enqueueCommand({ t: 'useExtra', ts: Date.now(), data: {} });
   }
 
@@ -58,6 +64,9 @@ window.DEBUG_dumpCommands = function(n) {
   n = n || 30;
   const slice = _cmdHistory.slice(-n);
   console.log('[commands] Last ' + slice.length + ' commands:');
-  for (const cmd of slice) console.log('  ' + cmd.t + ' (' + (Date.now() - cmd.ts) + 'ms ago)', cmd.data);
+  for (const cmd of slice) {
+    const age = Date.now() - cmd.ts;
+    console.log('  ' + cmd.t + ' (' + age + 'ms ago)', cmd.data);
+  }
   return slice;
 };
