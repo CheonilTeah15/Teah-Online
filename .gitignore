@@ -1,0 +1,17 @@
+# Backups (local only)
+index_2_backup*.html
+
+# Claude Code local settings
+.claude/
+
+# Node (just in case)
+node_modules/
+
+# Auto-sync script (local only)
+auto-sync.ps1
+
+# Logs
+*.log
+
+# Windows reserved device names
+nul
